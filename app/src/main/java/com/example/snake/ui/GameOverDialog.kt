@@ -16,13 +16,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,7 +50,8 @@ import com.example.snake.model.SnakeGameState
 @Composable
 fun GameOverDialog(
     state: SnakeGameState,
-    onRestart: () -> Unit
+    onRestart: () -> Unit,
+    onLobby: () -> Unit
 ) {
     var isVisible by remember { mutableStateOf(false) }
 
@@ -53,7 +59,7 @@ fun GameOverDialog(
         isVisible = true
     }
 
-    Dialog(onDismissRequest = { /* Require pressing Play Again */ }) {
+    Dialog(onDismissRequest = { /* Modal: require tapping button */ }) {
         AnimatedVisibility(
             visible = isVisible,
             enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) +
@@ -72,20 +78,20 @@ fun GameOverDialog(
                         )
                     )
                     .border(2.dp, Color(0xFFEF4444), RoundedCornerShape(26.dp))
-                    .padding(24.dp)
+                    .padding(22.dp)
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     // Header
                     Text(
                         text = "GAME OVER",
                         color = Color(0xFFEF4444),
-                        fontSize = 30.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 2.5.sp
+                        letterSpacing = 2.sp
                     )
 
                     // New Record Highlight
@@ -95,7 +101,7 @@ fun GameOverDialog(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0x33FFD700))
                                 .border(1.5.dp, Color(0xFFFFD700), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -105,12 +111,12 @@ fun GameOverDialog(
                                     imageVector = Icons.Default.EmojiEvents,
                                     contentDescription = null,
                                     tint = Color(0xFFFFD700),
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                                 Text(
                                     text = "NEW HIGH SCORE!",
                                     color = Color(0xFFFFD700),
-                                    fontSize = 15.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 1.sp
                                 )
@@ -125,7 +131,7 @@ fun GameOverDialog(
                             .clip(RoundedCornerShape(16.dp))
                             .background(Color(0xFF0B132B))
                             .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(16.dp))
-                            .padding(16.dp),
+                            .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         GameOverStatRow(
@@ -136,12 +142,20 @@ fun GameOverDialog(
                         GameOverStatRow(
                             label = "All-Time Best",
                             value = state.highScore.toString(),
-                            valueColor = Color(0xFFFFD166)
+                            valueColor = Color(0xFFFFD166),
+                            icon = Icons.Default.EmojiEvents
                         )
                         GameOverStatRow(
-                            label = "Foods Eaten",
-                            value = state.foodEatenCount.toString(),
-                            valueColor = Color(0xFFFF2A6D)
+                            label = "Coins Earned (Round)",
+                            value = "+${state.coinsEarnedThisRound}",
+                            valueColor = Color(0xFFFFD700),
+                            icon = Icons.Default.MonetizationOn
+                        )
+                        GameOverStatRow(
+                            label = "Total Coins Bank",
+                            value = state.totalCoins.toString(),
+                            valueColor = Color(0xFFFFD700),
+                            icon = Icons.Default.MonetizationOn
                         )
                         GameOverStatRow(
                             label = "Snake Length",
@@ -150,34 +164,63 @@ fun GameOverDialog(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                    // Play Again Button with high neon contrast
-                    Button(
-                        onClick = onRestart,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .testTag("play_again_button"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF00F5D4)
-                        )
+                    // Buttons: Play Again & Lobby
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color(0xFF0B132B),
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Text(
-                            text = "PLAY AGAIN",
-                            color = Color(0xFF0B132B),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.5.sp,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
+                        Button(
+                            onClick = onRestart,
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(52.dp)
+                                .testTag("play_again_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00F5D4)
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color(0xFF0B132B),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "PLAY AGAIN",
+                                color = Color(0xFF0B132B),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onLobby,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("game_over_lobby_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF94A3B8))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Home,
+                                contentDescription = null,
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "LOBBY",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -189,23 +232,37 @@ fun GameOverDialog(
 private fun GameOverStatRow(
     label: String,
     value: String,
-    valueColor: Color
+    valueColor: Color,
+    icon: ImageVector? = null
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            color = Color(0xFF94A3B8),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = valueColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = label,
+                color = Color(0xFF94A3B8),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
         Text(
             text = value,
             color = valueColor,
-            fontSize = 19.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.ExtraBold
         )
     }

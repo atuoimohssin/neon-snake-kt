@@ -9,6 +9,9 @@ class RetroSoundManager(context: Context) {
 
     private var toneGenerator: ToneGenerator? = null
     var isSoundEnabled: Boolean = true
+    var speedProgress: Float = 0f
+    var isGameRunning: Boolean = false
+        private set
 
     init {
         try {
@@ -18,10 +21,20 @@ class RetroSoundManager(context: Context) {
         }
     }
 
+    fun setGameRunning(running: Boolean) {
+        isGameRunning = running
+    }
+
+    fun updateSpeed(progress: Float) {
+        speedProgress = progress.coerceIn(0f, 1f)
+    }
+
     fun playEatSound() {
         if (!isSoundEnabled) return
         try {
-            toneGenerator?.startTone(ToneGenerator.TONE_DTMF_C, 65)
+            // Speed up tone duration as level speed increases
+            val duration = (65 - (speedProgress * 25)).toInt().coerceAtLeast(30)
+            toneGenerator?.startTone(ToneGenerator.TONE_DTMF_C, duration)
         } catch (_: Exception) {}
     }
 
@@ -32,6 +45,10 @@ class RetroSoundManager(context: Context) {
         } catch (_: Exception) {}
     }
 
+    fun playBonusSound() {
+        playSpecialFoodSound()
+    }
+
     fun playBonusSpawnSound() {
         if (!isSoundEnabled) return
         try {
@@ -39,10 +56,31 @@ class RetroSoundManager(context: Context) {
         } catch (_: Exception) {}
     }
 
+    fun playCoinSound() {
+        if (!isSoundEnabled) return
+        try {
+            toneGenerator?.startTone(ToneGenerator.TONE_DTMF_A, 80)
+        } catch (_: Exception) {}
+    }
+
+    fun playLevelCompleteSound() {
+        if (!isSoundEnabled) return
+        try {
+            toneGenerator?.startTone(ToneGenerator.TONE_PROP_PROMPT, 180)
+        } catch (_: Exception) {}
+    }
+
+    fun playVictorySound() {
+        if (!isSoundEnabled) return
+        try {
+            toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 250)
+        } catch (_: Exception) {}
+    }
+
     fun playTurnSound() {
         if (!isSoundEnabled) return
         try {
-            toneGenerator?.startTone(ToneGenerator.TONE_PROP_PROMPT, 25)
+            toneGenerator?.startTone(ToneGenerator.TONE_PROP_PROMPT, 20)
         } catch (_: Exception) {}
     }
 

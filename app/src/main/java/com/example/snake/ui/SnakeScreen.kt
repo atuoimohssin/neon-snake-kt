@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,8 +23,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.snake.model.GameStatus
+import com.example.snake.model.GameState
 import com.example.snake.viewmodel.SnakeViewModel
 
 @Composable
@@ -33,12 +37,34 @@ fun SnakeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showSettings by remember { mutableStateOf(false) }
+    var showLevelSelector by remember { mutableStateOf(false) }
+    var showFloorShop by remember { mutableStateOf(false) }
 
-    // Intercept back button to pause game or dismiss settings
-    BackHandler(enabled = state.status == GameStatus.RUNNING || showSettings) {
-        if (showSettings) {
+    // Auto-pause when the app goes to the background
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                viewModel.pauseIfPlaying()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Intercept back button to dismiss dialogs or pause playing game (never navigate to lobby automatically)
+    BackHandler(
+        enabled = showSettings || showLevelSelector || showFloorShop || state.gameState == GameState.Playing
+    ) {
+        if (showFloorShop) {
+            showFloorShop = false
+        } else if (showLevelSelector) {
+            showLevelSelector = false
+        } else if (showSettings) {
             showSettings = false
-        } else if (state.status == GameStatus.RUNNING) {
+        } else if (state.gameState == GameState.Playing) {
             viewModel.pauseGame()
         }
     }
@@ -57,27 +83,32 @@ fun SnakeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header with title, stats, sound quick toggle, and controls
+            // Header with Level HUD progress bar, coin counter chip, and action icons
             ScoreHeader(
                 state = state,
-                onPauseToggle = {
-                    if (state.status == GameStatus.RUNNING) {
-                        viewModel.pauseGame()
-                    } else if (state.status == GameStatus.PAUSED) {
-                        viewModel.resumeGame()
-                    } else if (state.status == GameStatus.IDLE) {
-                        viewModel.startGame()
-                    }
-                },
+                onPauseToggle = { viewModel.togglePause() },
                 onRestart = { viewModel.restartGame() },
                 onToggleSound = { viewModel.toggleSound() },
-                onOpenSettings = { showSettings = true }
+                onOpenSettings = {
+                    viewModel.pauseIfPlaying()
+                    showSettings = true
+                },
+                onOpenLevelSelector = {
+                    viewModel.pauseIfPlaying()
+                    showLevelSelector = true
+                },
+                onOpenFloorShop = {
+                    viewModel.pauseIfPlaying()
+                    showFloorShop = true
+                }
             )
 
-            // Canvas Game Board with neon aesthetics & pulse animation
+            // Canvas Game Board with 3D floor perspective, cubes, spheres, and neon obstacles
             GameBoard(
                 state = state,
                 onTurn = { dir -> viewModel.turn(dir) },
+                onResume = { viewModel.resumeGame() },
+                onStartGame = { viewModel.startPlaying() },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -90,11 +121,50 @@ fun SnakeScreen(
             Spacer(modifier = Modifier.height(6.dp))
         }
 
-        // Game Over Dialog with smooth entrance and score details
-        if (state.status == GameStatus.GAME_OVER) {
+        // Floor Themes Shop Dialog
+        if (showFloorShop) {
+            FloorShopDialog(
+                state = state,
+                isFloorUnlocked = { floor -> viewModel.isFloorUnlocked(floor) },
+                onSelectFloor = { floorId -> viewModel.selectFloor(floorId) },
+                onBuyFloor = { floor, onResult -> viewModel.buyFloor(floor, onResult) },
+                onDismiss = { showFloorShop = false }
+            )
+        }
+
+        // Level Complete Dialog
+        if (state.gameState == GameState.LevelComplete && state.levelCompletion != null) {
+            LevelCompleteDialog(
+                completion = state.levelCompletion!!,
+                onNextLevel = { viewModel.advanceToNextLevel() },
+                onReplay = { viewModel.restartGame() },
+                onOpenLevelSelector = {
+                    showLevelSelector = true
+                },
+                onLobby = { viewModel.goToLobby() }
+            )
+        }
+
+        // Game Over Dialog with score and coins breakdown
+        if (state.gameState == GameState.GameOver) {
             GameOverDialog(
                 state = state,
-                onRestart = { viewModel.restartGame() }
+                onRestart = { viewModel.restartGame() },
+                onLobby = { viewModel.goToLobby() }
+            )
+        }
+
+        // Level Selector Grid Dialog
+        if (showLevelSelector) {
+            LevelSelectorDialog(
+                currentLevelId = state.currentLevel.id,
+                unlockedLevel = state.unlockedLevel,
+                levelStars = state.levelStars,
+                onSelectLevel = { levelId ->
+                    viewModel.loadLevel(levelId)
+                    showLevelSelector = false
+                },
+                onDismiss = { showLevelSelector = false }
             )
         }
 

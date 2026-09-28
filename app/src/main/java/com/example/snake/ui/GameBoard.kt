@@ -1,7 +1,9 @@
 package com.example.snake.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -17,25 +19,30 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -50,21 +57,35 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.snake.model.Cell
 import com.example.snake.model.Dir
+import com.example.snake.model.FloatingScore
 import com.example.snake.model.GRID_SIZE
 import com.example.snake.model.GameStatus
 import com.example.snake.model.SnakeGameState
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import com.example.snake.model.GameState
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
 fun GameBoard(
     state: SnakeGameState,
     onTurn: (Dir) -> Unit,
+    onResume: () -> Unit = {},
+    onStartGame: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var accumulatedDragX by remember { mutableFloatStateOf(0f) }
@@ -87,7 +108,7 @@ fun GameBoard(
         label = "sway_y"
     )
 
-    // 2. Pulse animation for 3D glowing food
+    // 2. Pulse animation for 3D glowing food & coins
     val infiniteTransition = rememberInfiniteTransition(label = "pseudo3d_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.90f,
@@ -108,6 +129,27 @@ fun GameBoard(
         label = "glow_alpha"
     )
 
+    // 3. Shared Continuous Floor Animation (Flow, Pulse, Aurora)
+    val floorAnimTime by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "floor_anim_time"
+    )
+
+    // Pause animations when the game is paused
+    var frozenFloorAnimTime by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(state.status) {
+        if (state.status == GameStatus.PAUSED) {
+            frozenFloorAnimTime = floorAnimTime
+        }
+    }
+    val effectiveFloorAnimTime = if (state.status == GameStatus.PAUSED) frozenFloorAnimTime else floorAnimTime
+
+    val currentFloor = state.selectedFloor
     val density = LocalDensity.current.density
 
     // Pre-allocated reusable Path for bonus star to guarantee 60 FPS (zero allocation in drawScope)
@@ -120,7 +162,11 @@ fun GameBoard(
             .aspectRatio(1f)
             .padding(horizontal = 14.dp, vertical = 4.dp)
             .testTag("game_board")
-            .pointerInput(Unit) {
+            .pointerInput(state.gameState) {
+                // Ignore swipe input unless state is Playing or Ready (where first input starts the game)
+                if (state.gameState != GameState.Playing && state.gameState != GameState.Ready) {
+                    return@pointerInput
+                }
                 detectDragGestures(
                     onDragStart = {
                         accumulatedDragX = 0f
@@ -145,8 +191,8 @@ fun GameBoard(
             },
         contentAlignment = Alignment.TopCenter
     ) {
-        // Tilted 3D Floor Canvas
-        Box(
+        // Tilted 3D Floor Canvas Container
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
@@ -156,38 +202,70 @@ fun GameBoard(
                     transformOrigin = TransformOrigin(0.5f, 0.72f)
                 }
                 .clip(RoundedCornerShape(22.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF0F172A),
-                            Color(0xFF030712)
-                        )
-                    )
-                )
-                .border(2.dp, Color(0xFF1E293B), RoundedCornerShape(22.dp))
+                .border(2.dp, currentFloor.borderColor, RoundedCornerShape(22.dp))
         ) {
+            val totalBoardPx = constraints.maxWidth.toFloat()
+            val singleCellPx = totalBoardPx / GRID_SIZE
+
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val boardWidth = size.width
                 val boardHeight = size.height
                 val cellSize = boardWidth / GRID_SIZE
                 val cubeHeight = cellSize * 0.32f
 
-                // 1. Grid Lines with perspective grid styling
-                val gridColor = Color(0x1A38BDF8)
-                for (i in 1 until GRID_SIZE) {
-                    val x = i * cellSize
-                    drawLine(
-                        color = gridColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x, boardHeight),
-                        strokeWidth = 1f
+                // 1. Render Dynamic Floor (Theme Background Gradient + Grid Lines + Flow/Pulse/Aurora Animation)
+                FloorRenderer.drawFloor(
+                    drawScope = this,
+                    floor = currentFloor,
+                    animTime = effectiveFloorAnimTime,
+                    gridCount = GRID_SIZE,
+                    reduceAnimations = state.reduceAnimations,
+                    forceStatic = (state.status == GameStatus.PAUSED)
+                )
+
+                // 1.5. Render Obstacles (3D Neon Blocks with Drop Shadow)
+                val obstacleShadowColor = Color(0x66000000)
+                val obstacleTopColor = Color(0xFFE11D48)
+                val obstacleSideColor = Color(0xFF881337)
+                val obstacleBorderColor = Color(0xFFFB7185)
+
+                state.obstacles.forEach { obstacle ->
+                    val obLeft = obstacle.x * cellSize + 1.5f
+                    val obTop = obstacle.y * cellSize + 1.5f
+                    val obDim = cellSize - 3f
+
+                    // Soft floor shadow
+                    drawRoundRect(
+                        color = obstacleShadowColor,
+                        topLeft = Offset(obLeft + 1f, obTop + 3f),
+                        size = Size(obDim, obDim + 2f),
+                        cornerRadius = CornerRadius(obDim * 0.2f, obDim * 0.2f)
                     )
-                    val y = i * cellSize
-                    drawLine(
-                        color = gridColor,
-                        start = Offset(0f, y),
-                        end = Offset(boardWidth, y),
-                        strokeWidth = 1f
+
+                    // Extruded side face (dark ruby)
+                    drawRoundRect(
+                        color = obstacleSideColor,
+                        topLeft = Offset(obLeft, obTop + obDim * 0.35f - cubeHeight),
+                        size = Size(obDim, obDim * 0.65f + cubeHeight),
+                        cornerRadius = CornerRadius(obDim * 0.2f, obDim * 0.2f)
+                    )
+
+                    // Raised top face
+                    val topFaceY = obTop - cubeHeight
+                    drawRoundRect(
+                        color = obstacleTopColor,
+                        topLeft = Offset(obLeft, topFaceY),
+                        size = Size(obDim, obDim),
+                        cornerRadius = CornerRadius(obDim * 0.2f, obDim * 0.2f)
+                    )
+
+                    // Top face neon highlight border
+                    drawRoundRect(
+                        color = obstacleBorderColor,
+                        topLeft = Offset(obLeft + 1f, topFaceY + 1f),
+                        size = Size(obDim - 2f, obDim - 2f),
+                        cornerRadius = CornerRadius(obDim * 0.18f, obDim * 0.18f),
+                        style = Stroke(width = 1.5f)
                     )
                 }
 
@@ -249,7 +327,73 @@ fun GameBoard(
                     center = Offset(foodCenterX + currentRadius * 0.35f, foodCenterY - floatOffset - currentRadius * 0.6f)
                 )
 
-                // 3. Render Special Bonus (3D Golden Star with rotating countdown aura)
+                // 3. Render 3D Gold Coin Pickup (if active)
+                state.coinPickup?.let { coin ->
+                    val cCell = coin.cell
+                    val cCenterX = cCell.x * cellSize + cellSize / 2f
+                    val cCenterY = cCell.y * cellSize + cellSize / 2f
+                    val cRadius = (cellSize / 2.3f) * pulseScale
+                    val cFloat = 6f * pulseScale
+
+                    // Floor Drop Shadow under coin
+                    drawOval(
+                        color = Color(0x66000000),
+                        topLeft = Offset(cCenterX - cRadius * 0.9f, cCenterY + 3f),
+                        size = Size(cRadius * 1.8f, cRadius * 0.75f)
+                    )
+
+                    // Golden Outer Glow Aura
+                    drawCircle(
+                        color = Color(0xFFFFD700).copy(alpha = glowAlpha * 0.8f),
+                        radius = cRadius * 1.6f,
+                        center = Offset(cCenterX, cCenterY - cFloat)
+                    )
+
+                    // Circular Countdown Ring around coin
+                    val coinProgress = coin.remainingMillis.toFloat() / coin.totalMillis
+                    drawArc(
+                        color = Color(0xFFFFD700),
+                        startAngle = -90f,
+                        sweepAngle = 360f * coinProgress,
+                        useCenter = false,
+                        topLeft = Offset(cCenterX - cRadius * 1.25f, cCenterY - cFloat - cRadius * 1.25f),
+                        size = Size(cRadius * 2.5f, cRadius * 2.5f),
+                        style = Stroke(width = 2.5f)
+                    )
+
+                    // 3D Coin Outer Disc
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFFFFF7B2),
+                                Color(0xFFFFD700),
+                                Color(0xFFD97706),
+                                Color(0xFF78350F)
+                            ),
+                            center = Offset(cCenterX - cRadius * 0.25f, cCenterY - cFloat - cRadius * 0.25f),
+                            radius = cRadius
+                        ),
+                        radius = cRadius,
+                        center = Offset(cCenterX, cCenterY - cFloat)
+                    )
+
+                    // Coin Inner Embossed Ring
+                    drawCircle(
+                        color = Color(0xFFFFFBEB).copy(alpha = 0.8f),
+                        radius = cRadius * 0.65f,
+                        center = Offset(cCenterX, cCenterY - cFloat),
+                        style = Stroke(width = 1.5f)
+                    )
+
+                    // Coin Center Dot / Specular reflection
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.9f),
+                        radius = cRadius * 0.2f,
+                        center = Offset(cCenterX - cRadius * 0.28f, cCenterY - cFloat - cRadius * 0.28f)
+                    )
+                }
+
+                // 4. Render Special Bonus (3D Golden Star with rotating countdown aura)
                 state.specialBonus?.let { bonus ->
                     val bCell = bonus.cell
                     val bCenterX = bCell.x * cellSize + cellSize / 2f
@@ -307,7 +451,7 @@ fun GameBoard(
                     )
                 }
 
-                // 4. Render Snake 3D Cubes (Tail to Head)
+                // 5. Render Snake 3D Cubes (Tail to Head)
                 val snake = state.snake
                 val headCyan = Color(0xFF00F5D4)
                 val tailBlue = Color(0xFF0077B6)
@@ -405,11 +549,21 @@ fun GameBoard(
                     }
                 }
             }
+
+            // 6. Floating Score Points Animation Overlay (mapped to cell positions)
+            for (floatingScore in state.activeFloatingScores) {
+                val startX = (floatingScore.cell.x * singleCellPx)
+                val startY = (floatingScore.cell.y * singleCellPx)
+                FloatingScoreView(
+                    score = floatingScore,
+                    modifier = Modifier.offset { IntOffset(startX.roundToInt(), startY.roundToInt()) }
+                )
+            }
         }
 
-        // Overlay 1: Un-obscured "Swipe or Press Arrow to Start" at the top
+        // Top Overlay 1: Ready Prompt
         AnimatedVisibility(
-            visible = state.status == GameStatus.IDLE,
+            visible = state.gameState == GameState.Ready,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.padding(top = 10.dp)
@@ -442,54 +596,206 @@ fun GameBoard(
             }
         }
 
-        // Overlay 2: Active Bonus Timer Pill
-        state.specialBonus?.let { bonus ->
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xDD78350F))
-                    .border(1.dp, Color(0xFFFFD700), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+        // Top Overlay 2: Active Bonus Timer Pill / Coin Timer Pill
+        Row(
+            modifier = Modifier
+                .padding(top = 10.dp)
+                .align(Alignment.TopCenter),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            state.specialBonus?.let { bonus ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xDD78350F))
+                        .border(1.dp, Color(0xFFFFD700), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFFFD700),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "BONUS +${bonus.points} (${(bonus.remainingMillis / 1000f).coerceAtLeast(0f).let { String.format("%.1fs", it) }})",
-                        color = Color(0xFFFFD700),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD700),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "BONUS +${bonus.points} (${(bonus.remainingMillis / 1000f).coerceAtLeast(0f).let { String.format("%.1fs", it) }})",
+                            color = Color(0xFFFFD700),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+
+            state.coinPickup?.let { coin ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xD8422006))
+                        .border(1.dp, Color(0xFFFBBF24), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MonetizationOn,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD700),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "COIN (${(coin.remainingMillis / 1000f).coerceAtLeast(0f).let { String.format("%.1fs", it) }})",
+                            color = Color(0xFFFFD700),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
         }
 
-        // Overlay 3: Paused Badge
-        if (state.status == GameStatus.PAUSED) {
+        // Overlay: Lobby Card
+        if (state.gameState == GameState.Lobby) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xEE000000))
-                    .border(1.5.dp, Color(0xFFFFD166), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 28.dp, vertical = 14.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xF00B132B))
+                    .border(1.5.dp, Color(0xFF38BDF8), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 24.dp, vertical = 20.dp)
             ) {
-                Text(
-                    text = "PAUSED",
-                    color = Color(0xFFFFD166),
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "NEON SNAKE",
+                        color = Color(0xFF00F5D4),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp
+                    )
+                    Text(
+                        text = "LEVEL ${state.currentLevel.id} • ${state.currentLevel.targetFood} FOOD TARGET",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Button(
+                        onClick = onStartGame,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("lobby_start_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color(0xFF0B132B),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "START GAME",
+                            color = Color(0xFF0B132B),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
             }
         }
+
+        // Overlay: Paused Overlay with Resume Button
+        if (state.gameState == GameState.Paused || state.status == GameStatus.PAUSED) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFA0B132B))
+                    .border(2.dp, Color(0xFFFFD166), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 28.dp, vertical = 20.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "PAUSED",
+                        color = Color(0xFFFFD166),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp
+                    )
+                    Button(
+                        onClick = onResume,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("resume_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color(0xFF0B132B),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "RESUME",
+                            color = Color(0xFF0B132B),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingScoreView(
+    score: FloatingScore,
+    modifier: Modifier = Modifier
+) {
+    val offsetY = remember { Animatable(0f) }
+    val alpha = remember { Animatable(1f) }
+
+    LaunchedEffect(score.id) {
+        launch {
+            offsetY.animateTo(
+                targetValue = -34f,
+                animationSpec = tween(durationMillis = 850, easing = LinearOutSlowInEasing)
+            )
+        }
+        launch {
+            delay(350L)
+            alpha.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .offset { IntOffset(0, offsetY.value.roundToInt()) }
+            .alpha(alpha.value)
+    ) {
+        Text(
+            text = score.text,
+            color = score.color,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0x99000000))
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        )
     }
 }
