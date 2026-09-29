@@ -93,10 +93,11 @@ fun ScoreHeader(
                 // Pause / Play toggle button (prominently placed first so it is never pushed off screen)
                 val isPlaying = state.gameState == GameState.Playing
                 val isPaused = state.gameState == GameState.Paused
+                val pauseScale = state.pauseButtonScale.coerceIn(0.7f, 1.5f)
                 IconButton(
                     onClick = onPauseToggle,
                     modifier = Modifier
-                        .size(38.dp)
+                        .size((38.dp * pauseScale).coerceAtLeast(36.dp))
                         .clip(RoundedCornerShape(10.dp))
                         .background(
                             when {
@@ -125,7 +126,7 @@ fun ScoreHeader(
                             isPaused -> Color(0xFF00F5D4)
                             else -> Color(0xFF38BDF8)
                         },
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size((22.dp * pauseScale).coerceAtLeast(20.dp))
                     )
                 }
 

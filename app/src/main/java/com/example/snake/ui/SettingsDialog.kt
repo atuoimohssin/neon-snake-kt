@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.snake.model.GameDifficulty
 import com.example.snake.model.SnakeGameState
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Tune
 
 @Composable
 fun SettingsDialog(
@@ -46,6 +48,7 @@ fun SettingsDialog(
     onToggleWallCollision: () -> Unit,
     onToggleSound: () -> Unit,
     onToggleHaptics: () -> Unit,
+    onOpenCustomizeControls: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -271,6 +274,51 @@ fun SettingsDialog(
                             checkedTrackColor = Color(0xFF0D9488)
                         ),
                         modifier = Modifier.testTag("haptics_switch")
+                    )
+                }
+
+                // 5. Customize Controls Action Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF1E293B))
+                        .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                        .clickable { onOpenCustomizeControls() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .testTag("open_customize_controls_button"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = Color(0xFF00F5D4),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Customize Controls",
+                                color = Color(0xFFF8FAFC),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Drag D-Pad position & adjust size (${(state.dpadScale * 100).toInt()}%)",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Open",
+                        tint = Color(0xFF00F5D4),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 

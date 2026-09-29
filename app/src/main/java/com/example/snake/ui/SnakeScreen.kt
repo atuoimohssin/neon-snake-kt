@@ -39,6 +39,7 @@ fun SnakeScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showLevelSelector by remember { mutableStateOf(false) }
     var showFloorShop by remember { mutableStateOf(false) }
+    var showCustomizeControls by remember { mutableStateOf(false) }
 
     // Auto-pause when the app goes to the background
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -56,9 +57,11 @@ fun SnakeScreen(
 
     // Intercept back button to dismiss dialogs or pause playing game (never navigate to lobby automatically)
     BackHandler(
-        enabled = showSettings || showLevelSelector || showFloorShop || state.gameState == GameState.Playing
+        enabled = showCustomizeControls || showSettings || showLevelSelector || showFloorShop || state.gameState == GameState.Playing
     ) {
-        if (showFloorShop) {
+        if (showCustomizeControls) {
+            showCustomizeControls = false
+        } else if (showFloorShop) {
             showFloorShop = false
         } else if (showLevelSelector) {
             showLevelSelector = false
@@ -112,9 +115,13 @@ fun SnakeScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // D-Pad Arcade Controls with unambiguous Left/Right mapping
+            // D-Pad Arcade Controls with unambiguous Left/Right mapping and custom offset/scale
             ArcadeControls(
                 onTurn = { dir -> viewModel.turn(dir) },
+                scale = state.dpadScale,
+                offsetX = state.dpadOffsetX,
+                offsetY = state.dpadOffsetY,
+                leftHanded = state.leftHandedControls,
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -176,7 +183,29 @@ fun SnakeScreen(
                 onToggleWallCollision = { viewModel.toggleWallCollision() },
                 onToggleSound = { viewModel.toggleSound() },
                 onToggleHaptics = { viewModel.toggleHaptics() },
+                onOpenCustomizeControls = {
+                    viewModel.pauseIfPlaying()
+                    showSettings = false
+                    showCustomizeControls = true
+                },
                 onDismiss = { showSettings = false }
+            )
+        }
+
+        // Customize Controls Screen / Dialog
+        if (showCustomizeControls) {
+            CustomizeControlsDialog(
+                state = state,
+                onSave = { scale, offsetX, offsetY, pauseScale, leftHanded ->
+                    viewModel.saveControls(scale, offsetX, offsetY, pauseScale, leftHanded)
+                    showCustomizeControls = false
+                },
+                onReset = {
+                    viewModel.resetControls()
+                },
+                onDismiss = {
+                    showCustomizeControls = false
+                }
             )
         }
     }
