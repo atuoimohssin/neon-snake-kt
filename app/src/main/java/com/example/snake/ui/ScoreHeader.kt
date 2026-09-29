@@ -45,6 +45,12 @@ import com.example.snake.model.GameState
 import com.example.snake.model.GameStatus
 import com.example.snake.model.SnakeGameState
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+
 @Composable
 fun ScoreHeader(
     state: SnakeGameState,
@@ -54,6 +60,7 @@ fun ScoreHeader(
     onOpenSettings: () -> Unit,
     onOpenLevelSelector: () -> Unit,
     onOpenFloorShop: () -> Unit,
+    onOpenProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -203,6 +210,40 @@ fun ScoreHeader(
                         tint = Color(0xFFF1F5F9),
                         modifier = Modifier.size(18.dp)
                     )
+                }
+
+                // Google User Account profile button
+                IconButton(
+                    onClick = onOpenProfile,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(if (state.currentUser != null) Color(0x3300F5D4) else Color(0x22FFFFFF))
+                        .border(
+                            1.dp,
+                            if (state.currentUser != null) Color(0xFF00F5D4) else Color(0xFF475569),
+                            CircleShape
+                        )
+                        .testTag("account_profile_btn")
+                ) {
+                    val photoUrl = state.currentUser?.photoUrl
+                    if (photoUrl != null) {
+                        AsyncImage(
+                            model = photoUrl,
+                            contentDescription = "User Account",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = "User Account",
+                            tint = if (state.currentUser != null) Color(0xFF00F5D4) else Color(0xFFCBD5E1),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }

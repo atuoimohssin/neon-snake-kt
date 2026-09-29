@@ -1,6 +1,7 @@
 package com.example.snake.model
 
 import androidx.compose.ui.graphics.Color
+import com.google.firebase.auth.FirebaseUser
 
 const val GRID_SIZE = 20
 
@@ -112,7 +113,13 @@ data class SnakeGameState(
     val soundEnabled: Boolean = true,
     val hapticsEnabled: Boolean = true,
     val isNewHighScore: Boolean = false,
-    val snackMessage: String? = null
+    val snackMessage: String? = null,
+    val currentUser: FirebaseUser? = null,
+    val isAuthLoading: Boolean = false,
+    val authErrorMessage: String? = null,
+    val isCloudSyncing: Boolean = false,
+    val isCloudSynced: Boolean = false,
+    val cloudHighScore: Int? = null
 ) {
     val status: GameStatus
         get() = when (gameState) {

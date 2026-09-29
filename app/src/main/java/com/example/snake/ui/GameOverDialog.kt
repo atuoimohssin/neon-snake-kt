@@ -139,8 +139,13 @@ fun GameOverDialog(
                             value = state.score.toString(),
                             valueColor = Color(0xFF00F5D4)
                         )
+                        val bestLabel = when {
+                            state.isCloudSynced -> "All-Time Best (Cloud ☁✓)"
+                            state.currentUser != null -> "All-Time Best (Syncing...)"
+                            else -> "All-Time Best"
+                        }
                         GameOverStatRow(
-                            label = "All-Time Best",
+                            label = bestLabel,
                             value = state.highScore.toString(),
                             valueColor = Color(0xFFFFD166),
                             icon = Icons.Default.EmojiEvents

@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -35,11 +36,13 @@ fun SnakeScreen(
     viewModel: SnakeViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showSettings by remember { mutableStateOf(false) }
     var showLevelSelector by remember { mutableStateOf(false) }
     var showFloorShop by remember { mutableStateOf(false) }
     var showCustomizeControls by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
 
     // Auto-pause when the app goes to the background
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -57,9 +60,11 @@ fun SnakeScreen(
 
     // Intercept back button to dismiss dialogs or pause playing game (never navigate to lobby automatically)
     BackHandler(
-        enabled = showCustomizeControls || showSettings || showLevelSelector || showFloorShop || state.gameState == GameState.Playing
+        enabled = showProfileDialog || showCustomizeControls || showSettings || showLevelSelector || showFloorShop || state.gameState == GameState.Playing
     ) {
-        if (showCustomizeControls) {
+        if (showProfileDialog) {
+            showProfileDialog = false
+        } else if (showCustomizeControls) {
             showCustomizeControls = false
         } else if (showFloorShop) {
             showFloorShop = false
@@ -103,6 +108,10 @@ fun SnakeScreen(
                 onOpenFloorShop = {
                     viewModel.pauseIfPlaying()
                     showFloorShop = true
+                },
+                onOpenProfile = {
+                    viewModel.pauseIfPlaying()
+                    showProfileDialog = true
                 }
             )
 
@@ -188,6 +197,11 @@ fun SnakeScreen(
                     showSettings = false
                     showCustomizeControls = true
                 },
+                onOpenProfile = {
+                    viewModel.pauseIfPlaying()
+                    showSettings = false
+                    showProfileDialog = true
+                },
                 onDismiss = { showSettings = false }
             )
         }
@@ -206,6 +220,19 @@ fun SnakeScreen(
                 onDismiss = {
                     showCustomizeControls = false
                 }
+            )
+        }
+
+        // User Profile & Google Sign-In Dialog
+        if (showProfileDialog) {
+            UserProfileDialog(
+                state = state,
+                onSignIn = { viewModel.signInWithGoogle(context) },
+                onQuickSignIn = { viewModel.signInQuickCloud() },
+                onSignOut = { viewModel.signOut() },
+                onSyncWithCloud = { viewModel.syncWithCloud() },
+                onClearError = { viewModel.clearAuthError() },
+                onDismiss = { showProfileDialog = false }
             )
         }
     }

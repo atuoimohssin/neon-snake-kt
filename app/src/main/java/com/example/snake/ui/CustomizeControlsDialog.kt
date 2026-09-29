@@ -23,7 +23,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.RestartAlt
@@ -90,23 +95,30 @@ fun CustomizeControlsDialog(
     // Consistent LTR coordinate system for absolute screen drag behavior
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Dialog(
-            onDismissRequest = onDismiss,
+            onDismissRequest = {
+                onSave(draftScale, draftOffsetX, draftOffsetY, 1.0f, draftLeftHanded)
+            },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
                 dismissOnBackPress = true,
                 dismissOnClickOutside = false
             )
         ) {
+            BackHandler {
+                onSave(draftScale, draftOffsetX, draftOffsetY, 1.0f, draftLeftHanded)
+            }
+
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
                     .testTag("customize_controls_screen"),
                 color = Color(0xFF070B14)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Top Bar Header
@@ -123,37 +135,73 @@ fun CustomizeControlsDialog(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = null,
                                 tint = Color(0xFF00F5D4),
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             Text(
-                                text = "CUSTOMIZE CONTROLS",
+                                text = "تخصيص الأزرار",
                                 color = Color(0xFFF8FAFC),
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black
                             )
                         }
 
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.testTag("close_customize_controls")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Close",
-                                tint = Color(0xFF94A3B8)
-                            )
+                            // Top Quick Save Button
+                            Button(
+                                onClick = {
+                                    onSave(draftScale, draftOffsetX, draftOffsetY, 1.0f, draftLeftHanded)
+                                },
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .testTag("top_save_controls_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color(0xFF030712),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "حفظ",
+                                    color = Color(0xFF030712),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    onSave(draftScale, draftOffsetX, draftOffsetY, 1.0f, draftLeftHanded)
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("close_customize_controls")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Save and Close",
+                                    tint = Color(0xFF94A3B8),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
 
                     // Instruction Hint
                     Text(
-                        text = "Drag to move, use the slider to resize",
+                        text = "اسحب الأزرار لتغيير موضعها، أو استخدم الشريط لتغيير الحجم",
                         color = Color(0xFF38BDF8),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
 
                     // Live Settings Toolbar (Scale Slider & Left-handed switch)
@@ -404,10 +452,12 @@ fun CustomizeControlsDialog(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Action Buttons Row: Reset, Cancel, Save
+                    // Action Buttons Row: Reset & Save Changes
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Reset to defaults
@@ -421,7 +471,7 @@ fun CustomizeControlsDialog(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp)
+                                .height(46.dp)
                                 .testTag("reset_controls_button"),
                             shape = RoundedCornerShape(12.dp),
                             border = ButtonDefaults.outlinedButtonBorder.copy(
@@ -436,56 +486,37 @@ fun CustomizeControlsDialog(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Reset",
+                                text = "إعادة ضبط",
                                 color = Color(0xFFCBD5E1),
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
 
-                        // Cancel without saving
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("cancel_controls_button"),
-                            shape = RoundedCornerShape(12.dp),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                brush = androidx.compose.ui.graphics.SolidColor(Color(0xFF475569))
-                            )
-                        ) {
-                            Text(
-                                text = "Cancel",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        // Save changes to DataStore
+                        // Wide Glowing Save Button
                         Button(
                             onClick = {
                                 onSave(draftScale, draftOffsetX, draftOffsetY, 1.0f, draftLeftHanded)
                             },
                             modifier = Modifier
-                                .weight(1.2f)
-                                .height(44.dp)
+                                .weight(2f)
+                                .height(46.dp)
                                 .testTag("save_controls_button"),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Save,
                                 contentDescription = null,
                                 tint = Color(0xFF030712),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Save",
+                                text = "حفظ التعديلات (Save)",
                                 color = Color(0xFF030712),
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Black
                             )
                         }

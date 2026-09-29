@@ -28,7 +28,11 @@ import com.example.snake.model.LevelRepository
 import com.example.snake.model.SnakeGameState
 import com.example.snake.model.SpecialBonus
 import com.example.snake.model.UnlockType
+import com.example.snake.auth.AuthManager
+import com.example.snake.data.FirestoreSyncManager
+import com.example.snake.data.ProgressData
 import com.example.snake.sound.RetroSoundManager
+import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +48,8 @@ class SnakeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefsRepository = ProgressRepository(application)
     private val soundManager = RetroSoundManager(application)
+    private val authManager = AuthManager(application)
+    private val firestoreSyncManager = FirestoreSyncManager(application)
 
     private val _state = MutableStateFlow(SnakeGameState())
     val state: StateFlow<SnakeGameState> = _state.asStateFlow()
@@ -77,6 +83,17 @@ class SnakeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        viewModelScope.launch {
+            authManager.userFlow.collect { user ->
+                _state.update { it.copy(currentUser = user) }
+                if (user != null) {
+                    syncWithCloud(user)
+                } else {
+                    _state.update { it.copy(isCloudSynced = false, cloudHighScore = null) }
+                }
+            }
+        }
+
         viewModelScope.launch {
             val userPrefs = prefsRepository.progressDataFlow.first()
             soundManager.isSoundEnabled = userPrefs.soundEnabled
@@ -164,6 +181,11 @@ class SnakeViewModel(application: Application) : AndroidViewModel(application) {
                         wallCollision = progress.wallCollision,
                         difficulty = progress.difficulty
                     )
+                }
+
+                val user = _state.value.currentUser
+                if (user != null && _state.value.isCloudSynced) {
+                    syncProgressToCloud(user, progress)
                 }
             }
         }
@@ -455,12 +477,14 @@ class SnakeViewModel(application: Application) : AndroidViewModel(application) {
                 dpadOffsetX = offsetX,
                 dpadOffsetY = offsetY,
                 pauseButtonScale = clampedPause,
-                leftHandedControls = leftHanded
+                leftHandedControls = leftHanded,
+                snackMessage = "تم حفظ تعديلات الأزرار بنجاح! ✓"
             )
         }
         viewModelScope.launch {
             prefsRepository.saveControls(clampedScale, offsetX, offsetY, clampedPause, leftHanded)
         }
+        triggerHapticShort()
     }
 
     fun resetControls() {
@@ -470,12 +494,14 @@ class SnakeViewModel(application: Application) : AndroidViewModel(application) {
                 dpadOffsetX = 0f,
                 dpadOffsetY = 0f,
                 pauseButtonScale = 1.0f,
-                leftHandedControls = false
+                leftHandedControls = false,
+                snackMessage = "تمت استعادة الأبعاد الافتراضية للأزرار"
             )
         }
         viewModelScope.launch {
             prefsRepository.resetControls()
         }
+        triggerHapticShort()
     }
 
     fun setPauseButtonScale(scale: Float) {
@@ -842,6 +868,138 @@ class SnakeViewModel(application: Application) : AndroidViewModel(application) {
                 vibrator?.vibrate(160L)
             }
         } catch (_: Exception) {}
+    }
+
+    fun signInWithGoogle(context: Context? = null) {
+        viewModelScope.launch {
+            _state.update { it.copy(isAuthLoading = true, authErrorMessage = null) }
+            val result = authManager.signInWithGoogle(context)
+            result.onSuccess { user ->
+                _state.update {
+                    it.copy(
+                        currentUser = user,
+                        isAuthLoading = false,
+                        authErrorMessage = null,
+                        snackMessage = "مرحباً ${user.displayName ?: "يا بطل"}! تم تسجيل الدخول بنجاح ✓"
+                    )
+                }
+                syncWithCloud(user)
+            }.onFailure { exception ->
+                val msg = exception.localizedMessage ?: "فشل تسجيل الدخول"
+                val isCancelled = msg.contains("إلغاء")
+                _state.update {
+                    it.copy(
+                        isAuthLoading = false,
+                        authErrorMessage = if (!isCancelled) msg else null,
+                        snackMessage = if (isCancelled) "تم إلغاء عملية تسجيل الدخول" else null
+                    )
+                }
+            }
+        }
+    }
+
+    fun signInQuickCloud(playerName: String = "Neon Runner") {
+        viewModelScope.launch {
+            _state.update { it.copy(isAuthLoading = true, authErrorMessage = null) }
+            val result = authManager.signInQuickCloud(playerName)
+            result.onSuccess { user ->
+                _state.update {
+                    it.copy(
+                        currentUser = user,
+                        isAuthLoading = false,
+                        authErrorMessage = null,
+                        snackMessage = "تم إنشاء وتفعيل الحساب السحابي بنجاح! ☁✓"
+                    )
+                }
+                syncWithCloud(user)
+            }.onFailure { exception ->
+                _state.update {
+                    it.copy(
+                        isAuthLoading = false,
+                        authErrorMessage = exception.localizedMessage ?: "فشل تسجيل الدخول السحابي"
+                    )
+                }
+            }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            _state.update { it.copy(isAuthLoading = true) }
+            authManager.signOut()
+            _state.update {
+                it.copy(
+                    currentUser = null,
+                    isAuthLoading = false,
+                    snackMessage = "Signed out"
+                )
+            }
+        }
+    }
+
+    fun clearAuthError() {
+        _state.update { it.copy(authErrorMessage = null) }
+    }
+
+    fun syncWithCloud(user: FirebaseUser? = _state.value.currentUser) {
+        if (user == null) return
+        viewModelScope.launch {
+            _state.update { it.copy(isCloudSyncing = true) }
+            val local = prefsRepository.progressDataFlow.first()
+            val cloudResult = firestoreSyncManager.fetchPlayerData(user.uid)
+            cloudResult.onSuccess { cloudData ->
+                if (cloudData != null) {
+                    val merged = firestoreSyncManager.mergeProgress(local, cloudData)
+                    prefsRepository.applyMergedProgress(merged)
+                    firestoreSyncManager.savePlayerData(user, merged)
+                    _state.update {
+                        it.copy(
+                            isCloudSyncing = false,
+                            isCloudSynced = true,
+                            cloudHighScore = merged.highScore,
+                            highScore = merged.highScore,
+                            totalCoins = merged.totalCoins,
+                            unlockedLevel = merged.unlockedLevel,
+                            levelStars = merged.levelStars,
+                            unlockedFloorIds = merged.unlockedFloorIds,
+                            selectedFloorId = merged.selectedFloorId,
+                            snackMessage = "تمت مزامنة نقاطك وتقدمك سحابياً بنجاح! ☁✓"
+                        )
+                    }
+                } else {
+                    firestoreSyncManager.savePlayerData(user, local)
+                    _state.update {
+                        it.copy(
+                            isCloudSyncing = false,
+                            isCloudSynced = true,
+                            cloudHighScore = local.highScore,
+                            snackMessage = "تم حفظ نقاطك في السحابة بنجاح! ☁✓"
+                        )
+                    }
+                }
+            }.onFailure { e ->
+                _state.update {
+                    it.copy(
+                        isCloudSyncing = false,
+                        snackMessage = "تعذر الاتصال بالسحابة: ${e.localizedMessage ?: "خطأ في الشبكة"}"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun syncProgressToCloud(user: FirebaseUser, progress: ProgressData) {
+        viewModelScope.launch {
+            val result = firestoreSyncManager.savePlayerData(user, progress)
+            if (result.isSuccess) {
+                _state.update {
+                    it.copy(
+                        isCloudSynced = true,
+                        cloudHighScore = maxOf(it.cloudHighScore ?: 0, progress.highScore)
+                    )
+                }
+            }
+        }
     }
 
     override fun onCleared() {

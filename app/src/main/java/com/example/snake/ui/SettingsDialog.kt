@@ -41,6 +41,12 @@ import com.example.snake.model.SnakeGameState
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Tune
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+
 @Composable
 fun SettingsDialog(
     state: SnakeGameState,
@@ -49,6 +55,7 @@ fun SettingsDialog(
     onToggleSound: () -> Unit,
     onToggleHaptics: () -> Unit,
     onOpenCustomizeControls: () -> Unit,
+    onOpenProfile: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -87,6 +94,82 @@ fun SettingsDialog(
                             tint = Color(0xFF94A3B8)
                         )
                     }
+                }
+
+                // 0. Google Account Profile Shortcut Card
+                val user = state.currentUser
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (user != null) Color(0xFF1E293B) else Color(0x2238BDF8))
+                        .border(
+                            1.dp,
+                            if (user != null) Color(0xFF00F5D4).copy(alpha = 0.5f) else Color(0xFF38BDF8).copy(alpha = 0.4f),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .clickable { onOpenProfile() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .testTag("settings_account_row"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val photoUrl = user?.photoUrl
+                        if (photoUrl != null) {
+                            AsyncImage(
+                                model = photoUrl,
+                                contentDescription = "Profile Photo",
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, Color(0xFF00F5D4), CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(if (user != null) Color(0xFF00F5D4) else Color(0xFF334155)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (user != null) Icons.Default.Person else Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    tint = if (user != null) Color(0xFF0B132B) else Color(0xFF94A3B8),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = user?.displayName ?: if (user != null) "Google User" else "Google Sign-In",
+                                color = Color(0xFFF8FAFC),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = if (user != null) (user.email ?: "Account Connected") else "Sign in to backup progress & scores",
+                                color = if (user != null) Color(0xFF00F5D4) else Color(0xFF94A3B8),
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Open Account",
+                        tint = if (user != null) Color(0xFF00F5D4) else Color(0xFF94A3B8),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
 
                 // 1. Difficulty & Speed Selector

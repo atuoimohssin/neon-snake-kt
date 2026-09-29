@@ -281,6 +281,17 @@ class ProgressRepository(private val context: Context) {
             preferences[Keys.DIFFICULTY] = difficulty.name
         }
     }
+
+    suspend fun applyMergedProgress(progress: ProgressData) {
+        context.snakeDataStore.edit { preferences ->
+            preferences[Keys.HIGH_SCORE] = progress.highScore
+            preferences[Keys.TOTAL_COINS] = progress.totalCoins
+            preferences[Keys.UNLOCKED_LEVEL] = progress.unlockedLevel
+            preferences[Keys.SELECTED_FLOOR_ID] = progress.selectedFloorId
+            preferences[Keys.UNLOCKED_FLOOR_IDS] = progress.unlockedFloorIds
+            preferences[Keys.LEVEL_STARS] = encodeStars(progress.levelStars)
+        }
+    }
 }
 
 // Backward-compatibility alias
